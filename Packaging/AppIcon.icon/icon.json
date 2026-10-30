@@ -1,0 +1,22 @@
+{
+  "fill-specializations" : [
+    { "value" : { "automatic-gradient" : "extended-srgb:0.87451,0.95294,0.92549,1.00000" } },
+    { "appearance" : "dark", "value" : { "automatic-gradient" : "extended-srgb:0.05882,0.20000,0.16078,1.00000" } }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name-specializations" : [
+            { "value" : "leaf-light.png" },
+            { "appearance" : "dark", "value" : "leaf-dark.png" }
+          ],
+          "name" : "leaf"
+        }
+      ],
+      "shadow" : { "kind" : "neutral", "opacity" : 0.5 },
+      "translucency" : { "enabled" : true, "value" : 0.7 }
+    }
+  ],
+  "supported-platforms" : { "squares" : "shared" }
+}
