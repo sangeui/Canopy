@@ -866,7 +866,7 @@ private struct DetailNavBar: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.tertiary)
                         }
-                        Crumb(item: item, state: index == store.trailIndex ? .current : (index < store.trailIndex ? .past : .ahead)) {
+                        Crumb(item: item, position: index == store.trailIndex ? .current : (index < store.trailIndex ? .past : .ahead)) {
                             store.showTrail(at: index)
                         }
                         .id(index)
@@ -895,13 +895,31 @@ private struct DetailNavBar: View {
 
 /// 지나온 길의 한 칸
 private struct Crumb: View {
-    enum State { case past, current, ahead }
+    enum Position { case past, current, ahead }
 
     @Environment(\.onPanel) private var onPanel
     let item: RepositoryStore.Detail
-    let state: State
+    let position: Position
     let action: () -> Void
     @State private var hovering = false
+
+    private var textColor: Color {
+        switch position {
+        case .current: Theme.text
+        case .past: Theme.secondary
+        case .ahead: Theme.tertiary
+        }
+    }
+
+    private var fillColor: Color {
+        if position == .current {
+            return onPanel ? Theme.panelRaised : Theme.surface
+        }
+        if hovering {
+            return onPanel ? Theme.panelHover : Theme.hover
+        }
+        return Color.clear
+    }
 
     var body: some View {
         Button(action: action) {
@@ -909,22 +927,19 @@ private struct Crumb: View {
                 Image(systemName: item.symbol)
                     .font(.system(size: 10))
                 Text(item.crumbTitle)
-                    .font(.system(size: 12, weight: state == .current ? .semibold : .regular))
+                    .font(.system(size: 12, weight: position == .current ? .semibold : .regular))
                     .lineLimit(1)
                     .fixedSize()
             }
-            .foregroundStyle(state == .current ? Theme.text : (state == .past ? Theme.secondary : Theme.tertiary))
+            .foregroundStyle(textColor)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(
-                state == .current ? (onPanel ? Theme.panelRaised : Theme.surface) : (hovering ? (onPanel ? Theme.panelHover : Theme.hover) : Color.clear),
-                in: RoundedRectangle(cornerRadius: 8)
-            )
+            .background(fillColor, in: RoundedRectangle(cornerRadius: 8))
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(state == .current ? item.title : item.title + "\n누르면 여기로 돌아갑니다")
+        .help(position == .current ? item.title : "\(item.title)\n누르면 여기로 돌아갑니다")
     }
 }
 

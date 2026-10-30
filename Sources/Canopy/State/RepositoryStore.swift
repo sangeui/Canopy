@@ -973,13 +973,22 @@ final class RepositoryStore {
             assign(\.remoteHeads, (try? await remoteHeadsTask) ?? [:])
             Timing.log("refresh: status/refs \(Int(Date().timeIntervalSince(refreshStarted) * 1000))ms")
 
-            let signature = [
-                status.branch ?? "", status.headOID ?? "", status.upstream ?? "", historyScope.rawValue, selectedRefName ?? "",
-                branches.map { $0.fullName + "=" + $0.hash }.joined(separator: ","),
-                tags.map(\.name).joined(separator: ","),
-                stashes.map(\.hash).joined(separator: ","),
-                remoteHeads.sorted { $0.key < $1.key }.map { $0.key + $0.value }.joined(),
-            ].joined(separator: "|")
+            let branchSignature = branches.map { "\($0.fullName)=\($0.hash)" }.joined(separator: ",")
+            let tagSignature = tags.map(\.name).joined(separator: ",")
+            let stashSignature = stashes.map(\.hash).joined(separator: ",")
+            let remoteHeadSignature = remoteHeads.sorted { $0.key < $1.key }.map { "\($0.key)\($0.value)" }.joined()
+            let signatureParts: [String] = [
+                status.branch ?? "",
+                status.headOID ?? "",
+                status.upstream ?? "",
+                historyScope.rawValue,
+                selectedRefName ?? "",
+                branchSignature,
+                tagSignature,
+                stashSignature,
+                remoteHeadSignature,
+            ]
+            let signature = signatureParts.joined(separator: "|")
             if signature != refsSignature {
                 refsSignature = signature
                 // 브랜치가 바뀌면 코드 검색 결과는 맞지 않는다. 메시지 검색으로 돌아간다.

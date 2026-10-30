@@ -96,6 +96,8 @@ struct ChangedFileList: View {
     let onSelect: (DiffFile) -> Void
 
     var body: some View {
+        let totalAdditions = files.reduce(0) { $0 + $1.additions }
+        let totalDeletions = files.reduce(0) { $0 + $1.deletions }
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text("바뀐 파일")
@@ -104,32 +106,41 @@ struct ChangedFileList: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.secondary)
                 Spacer()
-                DiffCountLabel(
-                    additions: files.reduce(0) { $0 + $1.additions },
-                    deletions: files.reduce(0) { $0 + $1.deletions }
-                )
+                DiffCountLabel(additions: totalAdditions, deletions: totalDeletions)
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
             .padding(.bottom, 6)
             ForEach(files) { file in
-                Button { onSelect(file) } label: {
-                    // 파일 이름을 앞에 두고 폴더는 뒤에 흐리게. 폭이 모자라면 폴더를 통째로 뺀다.
-                    ViewThatFits(in: .horizontal) {
-                        fileRow(file, showsFolder: true)
-                        fileRow(file, showsFolder: false)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(kindTitle(for: file) + "\n" + file.displayPath + (file.isRename ? "\n원래 " + (file.oldPath ?? "") : ""))
-                .contextMenu { FileHistoryMenuItems(path: file.displayPath) }
+                itemView(for: file)
             }
             Color.clear.frame(height: 6)
         }
         .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func itemView(for file: DiffFile) -> some View {
+        Button { onSelect(file) } label: {
+            // 파일 이름을 앞에 두고 폴더는 뒤에 흐리게. 폭이 모자라면 폴더를 통째로 뺀다.
+            ViewThatFits(in: .horizontal) {
+                fileRow(file, showsFolder: true)
+                fileRow(file, showsFolder: false)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(helpText(for: file))
+        .contextMenu { FileHistoryMenuItems(path: file.displayPath) }
+    }
+
+    private func helpText(for file: DiffFile) -> String {
+        let base = "\(kindTitle(for: file))\n\(file.displayPath)"
+        if file.isRename, let oldPath = file.oldPath {
+            return "\(base)\n원래 \(oldPath)"
+        }
+        return base
     }
 
     private func fileRow(_ file: DiffFile, showsFolder: Bool) -> some View {

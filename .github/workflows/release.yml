@@ -82,6 +82,7 @@ jobs:
             gh release upload "$TAG" \
               "build/Canopy-$VERSION.dmg" "build/Canopy-$VERSION.dmg.sha256" \
               --clobber
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
           else
             gh release create "$TAG" \
               "build/Canopy-$VERSION.dmg" "build/Canopy-$VERSION.dmg.sha256" \
