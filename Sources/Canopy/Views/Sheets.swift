@@ -804,7 +804,11 @@ struct CloneSheet: View {
                         panel.canChooseFiles = false
                         panel.canCreateDirectories = true
                         panel.prompt = "선택"
-                        if panel.runModal() == .OK, let chosen = panel.url { parent = chosen.path(percentEncoded: false) }
+                        panel.begin { response in
+                            if response == .OK, let chosen = panel.url {
+                                parent = chosen.path(percentEncoded: false)
+                            }
+                        }
                     }
                     .buttonStyle(PillButtonStyle(compact: true))
                 }

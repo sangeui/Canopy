@@ -662,14 +662,19 @@ final class RepositoryStore {
     // MARK: 열기
 
     func openRepositoryPanel() {
+        NSApp.activate(ignoringOtherApps: true)
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.message = "Git 저장소 폴더를 고르세요"
         panel.prompt = "열기"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await open(url) }
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor [weak self] in
+                await self?.open(url)
+            }
+        }
     }
 
     func open(_ url: URL) async {

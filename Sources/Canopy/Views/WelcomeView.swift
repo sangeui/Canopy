@@ -86,7 +86,6 @@ struct WelcomeView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .titleBarDoubleClick()
         .dropDestination(for: URL.self) { urls, _ in
             guard gitInstalled, let url = urls.first else { return false }
             Task { await store.open(url) }

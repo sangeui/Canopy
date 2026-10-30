@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // 창이 갱신될 때마다 제목 표시줄 뷰가 맨 위인지 본다. 포인터 비교 한 번이라 가볍다.
         updateObserver = NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification, object: nil, queue: .main) { note in
-            guard let window = note.object as? NSWindow, window.styleMask.contains(.fullSizeContentView) else { return }
+            guard let window = note.object as? NSWindow, !(window is NSPanel), window.styleMask.contains(.fullSizeContentView) else { return }
             MainActor.assumeIsolated {
                 WindowChrome.keepTitlebarOnTop(window)
                 // 사이드바 버튼은 메인 창에만
