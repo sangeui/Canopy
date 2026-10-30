@@ -498,6 +498,8 @@ final class RepositoryStore {
     private var watcher: DirectoryWatcher?
     private var isRefreshing = false
     private var refreshRequestedAgain = false
+    private var refreshNeedsFull = false
+    private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
     private var statusMessageTask: Task<Void, Never>?
 
     init() {
@@ -912,19 +914,35 @@ final class RepositoryStore {
     /// `light`면 작업 트리와 스테이징만 읽는다. 스테이징·해제·버리기처럼 참조가 안 바뀌는 동작 뒤에 쓴다.
     /// 아니면 참조까지 읽되, 참조 요약이 그대로면 무거운 단계(로그·활동·머지 여부)를 건너뛴다.
     func refresh(light: Bool = false) async {
-        guard let git else { return }
+        guard git != nil else { return }
         if isRefreshing {
             refreshRequestedAgain = true
+            if !light { refreshNeedsFull = true }
+            await withCheckedContinuation { refreshWaiters.append($0) }
             return
         }
         isRefreshing = true
         defer {
             isRefreshing = false
+            let waiters = refreshWaiters
+            refreshWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+        }
+        var currentLight = light
+        while true {
+            await performRefresh(light: currentLight)
             if refreshRequestedAgain {
+                currentLight = !refreshNeedsFull
                 refreshRequestedAgain = false
-                Task { await refresh() }
+                refreshNeedsFull = false
+            } else {
+                break
             }
         }
+    }
+
+    private func performRefresh(light: Bool) async {
+        guard let git else { return }
         let refreshStarted = Date()
         do {
             async let statusTask = git.status()
@@ -2187,6 +2205,7 @@ final class RepositoryStore {
         busyMessage = nil
         gitFlowRun?.isRunning = false
         await refresh()
+        lastOwnChangeAt = Date()
         if operation != nil, let failed = gitFlowRun?.failedStep {
             // 머지 충돌로 멈췄으면 알아보기 쉬운 말로 바꾼다
             update(step: failed.id) { $0.state = .failed("충돌이 났습니다. 충돌을 풀고 계속하면 이어서 진행합니다") }
