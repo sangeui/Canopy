@@ -253,3 +253,101 @@ final class ReleaseParserTests: XCTestCase {
         XCTAssertEqual(release?.tarballURL?.absoluteString, "https://api.github.com/repos/sangeui/Canopy/tarball/v0.3.1")
     }
 }
+
+final class AssistantTests: XCTestCase {
+    func testAntigravityStreamJSONParsing() {
+        var parser = AssistantStreamParser()
+        let lines = [
+            #"{"type":"init","session_id":"s1","model":"gemini-2.5-pro"}"#,
+            #"{"type":"thought","content":"diff를 먼저 살펴봅니다"}"#,
+            #"{"type":"tool_use","tool_name":"read_file","parameters":{"file_path":"/repo/Sources/App.swift"}}"#,
+            #"{"type":"tool_result","status":"success","output":"line1\nline2\nline3"}"#,
+            #"{"type":"message","role":"assistant","content":"변경 사항 ","delta":true}"#,
+            #"{"type":"message","role":"assistant","content":"요약입니다.","delta":true}"#,
+            #"{"type":"result","status":"success"}"#,
+        ]
+        var events: [ClaudeEvent] = []
+        for line in lines {
+            events += parser.consume(line: line)
+        }
+        XCTAssertEqual(
+            events,
+            [
+                .thinkingStarted,
+                .thinkingStopped,
+                .toolUse(name: "Read", summary: "/repo/Sources/App.swift"),
+                .toolResult(summary: "3줄"),
+                .text("변경 사항 "),
+                .text("요약입니다."),
+            ]
+        )
+        XCTAssertTrue(parser.errorText.isEmpty)
+    }
+
+    func testClaudeStreamJSONParsing() {
+        var parser = AssistantStreamParser()
+        let lines = [
+            #"{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}}"#,
+            #"{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"#,
+            #"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"AssistantEngine"}}]}}"#,
+            #"{"type":"user","message":{"content":[{"type":"tool_result","content":"file1.swift\nfile2.swift"}]}}"#,
+            #"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"검색 완료"}}}"#,
+            #"{"type":"result","is_error":false,"result":"검색 완료"}"#,
+        ]
+        var events: [ClaudeEvent] = []
+        for line in lines {
+            events += parser.consume(line: line)
+        }
+        XCTAssertEqual(
+            events,
+            [
+                .thinkingStarted,
+                .thinkingStopped,
+                .toolUse(name: "Grep", summary: "AssistantEngine"),
+                .toolResult(summary: "2줄"),
+                .text("검색 완료"),
+            ]
+        )
+    }
+
+    func testAntigravitySkillCatalogAndProjectConfig() throws {
+        let fm = FileManager.default
+        let tempRoot = fm.temporaryDirectory.appendingPathComponent("canopy-agy-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: tempRoot) }
+
+        let repoDir = tempRoot.appendingPathComponent("repo", isDirectory: true)
+        let homeDir = tempRoot.appendingPathComponent("home", isDirectory: true)
+
+        let projectSkillDir = repoDir.appendingPathComponent(".agents/skills/review-pr", isDirectory: true)
+        let builtinSkillDir = homeDir.appendingPathComponent(".gemini/antigravity/builtin/skills/agy_guide", isDirectory: true)
+        try fm.createDirectory(at: projectSkillDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: builtinSkillDir, withIntermediateDirectories: true)
+
+        try """
+        ---
+        name: review-pr
+        description: PR 변경 사항을 검토합니다. 두 번째 문장.
+        allowed-tools: [Bash, Read]
+        ---
+        """.write(to: projectSkillDir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+
+        try """
+        ---
+        name: antigravity-guide
+        description: Antigravity 사용 안내서입니다.
+        ---
+        """.write(to: builtinSkillDir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+
+        try "# GEMINI Rule".write(to: repoDir.appendingPathComponent("GEMINI.md"), atomically: true, encoding: .utf8)
+
+        let skills = SkillCatalog.load(projectRoot: repoDir.path, engine: .antigravity, home: homeDir.path)
+        XCTAssertEqual(skills.map(\.name), ["review-pr", "antigravity-guide"])
+        XCTAssertEqual(skills.first?.source, "프로젝트")
+        XCTAssertEqual(skills.last?.source, "기본 내장")
+
+        let config = ClaudeProjectConfig.scan(root: repoDir.path, skills: skills, engine: .antigravity)
+        XCTAssertFalse(config.isEmpty)
+        XCTAssertTrue(config.items.contains("GEMINI.md"))
+        XCTAssertTrue(config.items.contains("스킬 review-pr (Bash, Read)"))
+    }
+}

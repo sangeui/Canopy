@@ -3215,7 +3215,10 @@ final class RepositoryStore {
     private(set) var assistantMessages: [AssistantMessage] = []
     private(set) var isAssistantRunning = false
     private var assistantTask: Task<Void, Never>?
-    /// claude CLI 위치. 앱으로 돌아올 때마다 다시 찾는다(`ClaudeAccount.relocate`).
+    /// 선택된 어시스턴트 엔진(Claude / Antigravity)
+    var assistantEngine: AssistantEngine { ClaudeAccount.shared.engine }
+    var assistantTitle: String { assistantEngine.title }
+    /// 활성 엔진의 CLI 위치. 앱으로 돌아올 때마다 다시 찾는다(`ClaudeAccount.relocate`).
     private var claudeExecutable: URL? { ClaudeAccount.shared.executable }
     var assistantAvailable: Bool { claudeExecutable != nil }
     /// 메인 창 위에 떠 있는 Claude 카드가 열려 있는지. 오른쪽 패널과 무관하다.
@@ -3286,8 +3289,9 @@ final class RepositoryStore {
     /// 스킬 목록을 다시 읽는다. 디스크만 읽으니 가볍지만 메인에서 하지 않는다.
     func loadSkills() {
         let root = mainRootPath
+        let engine = assistantEngine
         Task { [weak self] in
-            let loaded = await Task.detached(priority: .utility) { SkillCatalog.load(projectRoot: root) }.value
+            let loaded = await Task.detached(priority: .utility) { SkillCatalog.load(projectRoot: root, engine: engine) }.value
             self?.skills = loaded
         }
     }
@@ -3360,7 +3364,7 @@ final class RepositoryStore {
         let name = prompt.dropFirst().split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
         if let found = skills.first(where: { $0.name == name }) { return found }
         // 목록을 아직 못 읽었거나 방금 만든 스킬이면 지금 읽는다. `/`로 보낼 때만이라 한 번이다.
-        skills = SkillCatalog.load(projectRoot: mainRootPath)
+        skills = SkillCatalog.load(projectRoot: mainRootPath, engine: assistantEngine)
         return skills.first { $0.name == name }
     }
 
@@ -3435,16 +3439,18 @@ final class RepositoryStore {
     /// 이번 실행 동안 "설정 없이 보내기"를 고른 저장소. 같은 저장소에서 매번 묻지 않는다.
     private var declinedClaudeTrust: Set<String> = []
 
-    /// 저장소에 Claude 설정이 있고 아직 신뢰하지 않았으면 먼저 묻는다. 기본은 저장소 설정 없이 보내기.
+    /// 저장소에 어시스턴트 설정이 있고 아직 신뢰하지 않았으면 먼저 묻는다. 기본은 저장소 설정 없이 보내기.
     func askAssistant(_ prompt: String, action: AssistantAction? = nil) {
         guard !isAssistantRunning else { return }
+        let engine = assistantEngine
+        let title = engine.title
         guard claudeExecutable != nil, let root = activeWorktreePath else {
-            errorMessage = ClaudeError.notInstalled.localizedDescription
+            errorMessage = ClaudeError.notInstalled(engine).localizedDescription
             return
         }
         // 스킬 목록을 아직 안 읽었으면 지금 읽는다. 목록이 달라지면 신뢰 기록과 엇갈려 다시 묻게 된다.
-        if skills.isEmpty { skills = SkillCatalog.load(projectRoot: mainRootPath) }
-        let config = ClaudeProjectConfig.scan(root: root, skills: skills)
+        if skills.isEmpty { skills = SkillCatalog.load(projectRoot: mainRootPath, engine: engine) }
+        let config = ClaudeProjectConfig.scan(root: root, skills: skills, engine: engine)
         if config.isEmpty || config.isTrusted(root: root) {
             sendAssistant(prompt, action: action, projectSettings: !config.isEmpty)
             return
@@ -3455,12 +3461,12 @@ final class RepositoryStore {
         }
         let invokesProjectSkill = skill(in: prompt)?.source == "프로젝트"
         confirmation = Confirmation(
-            title: "이 저장소의 Claude 설정을 쓸까요?",
+            title: "이 저장소의 \(title) 설정을 쓸까요?",
             target: (root as NSString).abbreviatingWithTildeInPath,
-            targetDetail: "저장소에 Claude 설정이 들어 있습니다",
+            targetDetail: "저장소에 \(title) 설정이 들어 있습니다",
             facts: [.warns("신뢰하면 그 안의 훅, MCP 서버, 스킬이 허용한 명령이 이 Mac에서 실행될 수 있습니다")]
                 + config.items.prefix(8).map { .item($0) }
-                + [.note(invokesProjectSkill ? "이 스킬은 저장소에 든 것이라 신뢰해야 쓸 수 있습니다" : "신뢰하지 않으면 내 Claude 설정만으로 보냅니다")],
+                + [.note(invokesProjectSkill ? "이 스킬은 저장소에 든 것이라 신뢰해야 쓸 수 있습니다" : "신뢰하지 않으면 내 \(title) 설정만으로 보냅니다")],
             buttonTitle: "설정 없이 보내기",
             tone: .normal,
             action: { [weak self] in
@@ -3468,9 +3474,9 @@ final class RepositoryStore {
                 self?.sendAssistant(prompt, action: action, projectSettings: false)
             },
             choice: Confirmation.Choice(
-                title: "이 저장소의 Claude 설정 신뢰",
+                title: "이 저장소의 \(title) 설정 신뢰",
                 detail: "설정이나 스킬이 바뀌면 다시 묻습니다",
-                facts: [.keeps("저장소의 Claude 설정과 스킬을 씁니다")] + config.items.prefix(8).map { .item($0) },
+                facts: [.keeps("저장소의 \(title) 설정과 스킬을 씁니다")] + config.items.prefix(8).map { .item($0) },
                 buttonTitle: "신뢰하고 보내기",
                 action: { [weak self] in
                     config.trust(root: root)
@@ -3482,6 +3488,7 @@ final class RepositoryStore {
 
     private func sendAssistant(_ prompt: String, action: AssistantAction?, projectSettings: Bool) {
         guard let executable = claudeExecutable, let root = activeWorktreePath else { return }
+        let engine = assistantEngine
         var invokedSkill = skill(in: prompt)
         // 저장소 스킬은 신뢰하지 않으면 불리지 않으니 도구도 더하지 않는다
         if !projectSettings, invokedSkill?.source == "프로젝트" { invokedSkill = nil }
@@ -3498,7 +3505,7 @@ final class RepositoryStore {
         assistantMessages.append(AssistantMessage(role: .assistant, text: "", isStreaming: true, action: action))
         let index = assistantMessages.count - 1
         isAssistantRunning = true
-        let service = ClaudeService(executable: executable)
+        let service = ClaudeService(executable: executable, engine: engine)
         assistantTask = Task { [weak self] in
             guard let self else { return }
             let context = await assistantContext(items)

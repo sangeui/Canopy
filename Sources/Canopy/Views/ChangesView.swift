@@ -314,7 +314,7 @@ private struct CommitComposer: View {
                     if store.assistantAvailable, !store.status.staged.isEmpty {
                         Button { store.askAssistant(action: .commitMessage) } label: {
                             HStack(spacing: 4) {
-                                ClaudeMark(size: 10)
+                                AssistantMark(size: 10)
                                 Text("메시지 제안")
                             }
                         }

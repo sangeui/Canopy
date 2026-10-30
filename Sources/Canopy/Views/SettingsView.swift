@@ -30,10 +30,17 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: "일반"
         case .appearance: "모양"
-        case .claude: "Claude"
+        case .claude: ClaudeAccount.shared.engine.title
         case .git: "Git"
         case .security: "보안"
         case .about: "정보"
+        }
+    }
+
+    var searchKeywords: [String] {
+        switch self {
+        case .claude: ["claude", "antigravity", "안티그래비티", "gemini", "어시스턴트", "ai"]
+        default: [title.lowercased()]
         }
     }
 
@@ -59,7 +66,11 @@ private struct SettingsPanel: View {
 
     private var visiblePages: [SettingsPage] {
         let needle = query.trimmed.lowercased()
-        return SettingsPage.allCases.filter { needle.isEmpty || $0.title.lowercased().contains(needle) }
+        return SettingsPage.allCases.filter { item in
+            needle.isEmpty
+                || item.title.lowercased().contains(needle)
+                || item.searchKeywords.contains(where: { $0.contains(needle) })
+        }
     }
 
     var body: some View {
@@ -114,7 +125,7 @@ private struct SettingsPanel: View {
                     Button { pageID = item.rawValue } label: {
                         HStack(spacing: 10) {
                             if item == .claude {
-                                ClaudeMark(size: 15, color: page == item ? ClaudeMark.orange : Theme.text)
+                                AssistantMark(size: 15, color: page == item ? AssistantMark.accent : Theme.text)
                             } else {
                                 Image(systemName: item.symbol)
                                     .font(.system(size: 14))
@@ -365,27 +376,43 @@ private struct ThemeSwatch: View {
     }
 }
 
-// MARK: Claude
+// MARK: 어시스턴트 (Claude / Antigravity)
 
 private struct ClaudeSettings: View {
+    @Environment(RepositoryStore.self) private var store
     @State private var account = ClaudeAccount.shared
-    @AppStorage("claudeModel") private var model = ""
+    @AppStorage("claudeModel") private var claudeModel = ""
+    @AppStorage("antigravityModel") private var antigravityModel = ""
     @State private var confirmingLogout = false
 
-    private static let models: [(id: String, title: String)] = [
-        ("", "CLI 기본값"),
-        ("claude-fable-5-1", "Fable 5.1"),
-        ("claude-opus-5-5", "Opus 5.5"),
-        ("claude-sonnet-5-5", "Sonnet 5.5"),
-        ("claude-haiku-5-5", "Haiku 5.5"),
-    ]
+    private var selectedModel: Binding<String> {
+        switch account.engine {
+        case .claude: $claudeModel
+        case .antigravity: $antigravityModel
+        }
+    }
 
     var body: some View {
+        @Bindable var account = account
         VStack(alignment: .leading, spacing: 0) {
-            SettingsTitle(text: "Claude")
+            SettingsTitle(text: account.engine.title)
+            SettingsRow(title: "엔진", subtitle: "코드 설명, 리뷰, 커밋 메시지 제안에 사용할 CLI를 고릅니다.") {
+                Picker("", selection: $account.engine) {
+                    ForEach(AssistantEngine.allCases) { engine in
+                        Text(engine.title).tag(engine)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
             // 상태 카드. 한눈에 "쓸 수 있는지"가 보여야 한다.
             HStack(spacing: 14) {
-                ClaudeMark(size: 34, color: account.isInstalled && account.status?.loggedIn == true ? ClaudeMark.orange : Theme.tertiary)
+                AssistantMark(
+                    size: 34,
+                    color: account.isInstalled && account.status?.loggedIn == true ? AssistantMark.accent(for: account.engine) : Theme.tertiary,
+                    engine: account.engine
+                )
                 VStack(alignment: .leading, spacing: 3) {
                     Text(headline).font(.system(size: 14, weight: .semibold))
                     Text(subheadline).font(.system(size: 12)).foregroundStyle(Theme.secondary).lineLimit(2)
@@ -403,19 +430,19 @@ private struct ClaudeSettings: View {
             .padding(.vertical, 8)
 
             if !account.isInstalled {
-                SettingsRow(title: "Claude Code 설치") {
+                SettingsRow(title: "\(account.engine.productName) 설치") {
                     Button("\(TerminalApp.preferred.name)에서 설치") { account.openInstallInTerminal() }
                         .buttonStyle(PillButtonStyle(prominent: true, compact: true))
-                        .help(ClaudeAccount.installCommand)
+                        .help(account.engine.installCommand)
                 }
             }
 
-            // claude가 없으면 아래 항목은 쓸 일이 없어 끈다
+            // CLI가 없으면 아래 항목은 쓸 일이 없어 끈다
             Group {
                 loginRow
                 SettingsRow(title: "모델") {
-                    Picker("", selection: $model) {
-                        ForEach(Self.models, id: \.id) { Text($0.title).tag($0.id) }
+                    Picker("", selection: selectedModel) {
+                        ForEach(account.engine.models, id: \.id) { Text($0.title).tag($0.id) }
                     }
                     .labelsHidden()
                     .fixedSize()
@@ -425,10 +452,15 @@ private struct ClaudeSettings: View {
             .opacity(account.isInstalled ? 1 : 0.45)
         }
         .task { if account.checkedAt == nil { await account.refresh() } }
-        .confirmationDialog("Claude에서 로그아웃할까요?", isPresented: $confirmingLogout) {
+        .onChange(of: account.engine) {
+            store.loadSkills()
+        }
+        .confirmationDialog("\(account.engine.title)에서 로그아웃할까요?", isPresented: $confirmingLogout) {
             Button("로그아웃", role: .destructive) { Task { await account.logout() } }
         } message: {
-            Text("터미널의 claude 명령도 같이 로그아웃됩니다.")
+            Text(account.engine == .claude
+                ? "터미널의 claude 명령도 같이 로그아웃됩니다."
+                : "저장된 Antigravity / Gemini CLI 인증 정보를 지웁니다.")
         }
     }
 
@@ -440,7 +472,7 @@ private struct ClaudeSettings: View {
                     .buttonStyle(PillButtonStyle(compact: true))
                     .disabled(account.isChecking)
             } else {
-                // 꺼진 강조색 버튼은 흐리게 하면 글자가 묻혀서, claude가 없으면 보통 버튼으로 그린다
+                // 꺼진 강조색 버튼은 흐리게 하면 글자가 묻혀서, CLI가 없으면 보통 버튼으로 그린다
                 Button("\(TerminalApp.preferred.name)에서 로그인") { account.openLoginInTerminal() }
                     .buttonStyle(PillButtonStyle(prominent: account.isInstalled, compact: true))
                     .disabled(!account.isInstalled)
@@ -449,7 +481,7 @@ private struct ClaudeSettings: View {
     }
 
     private var headline: String {
-        if !account.isInstalled { return "claude CLI가 없습니다" }
+        if !account.isInstalled { return "\(account.engine.cliDisplayName) CLI가 없습니다" }
         if account.isChecking && account.status == nil { return "확인하는 중…" }
         if account.status?.loggedIn == true { return "쓸 수 있습니다" }
         return "로그인이 필요합니다"
@@ -537,7 +569,7 @@ private struct SecuritySettings: View {
                 gitTrusted = RepositoryTrust.trustedRoots
             }
 
-            SettingsSection(text: "Claude 설정을 신뢰한 저장소")
+            SettingsSection(text: "어시스턴트 설정을 신뢰한 저장소")
             trustedList(claudeTrusted, empty: "없음") { root in
                 ClaudeProjectConfig.revoke(root: root)
                 claudeTrusted = ClaudeProjectConfig.trustedRoots

@@ -13,11 +13,25 @@ struct ClaudeProjectConfig {
 
     var isEmpty: Bool { items.isEmpty }
 
-    static func scan(root: String, skills: [ClaudeSkill]) -> ClaudeProjectConfig {
+    static func scan(root: String, skills: [ClaudeSkill], engine: AssistantEngine = .current) -> ClaudeProjectConfig {
         let base = URL(fileURLWithPath: root, isDirectory: true)
         var config = ClaudeProjectConfig()
         var contents = ""
-        for path in [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"] {
+        let configPaths: [String]
+        switch engine {
+        case .claude:
+            configPaths = [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"]
+        case .antigravity:
+            configPaths = [
+                ".agents/settings.json",
+                ".agents/hooks.json",
+                ".agents/mcp_config.json",
+                ".gemini/settings.json",
+                "GEMINI.md",
+                "AGENTS.md",
+            ]
+        }
+        for path in configPaths {
             let url = base.appendingPathComponent(path)
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
             config.items.append(path)

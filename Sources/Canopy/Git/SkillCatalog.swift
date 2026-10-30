@@ -19,14 +19,29 @@ struct ClaudeSkill: Identifiable, Hashable {
 }
 
 /// 스킬 파일을 읽어 목록을 만든다. 디스크만 읽고 CLI는 부르지 않는다.
-/// 프로젝트 `.claude/skills`, 사용자 `~/.claude/skills`, 설치된 플러그인의 `skills` 폴더 순서.
+/// 엔진에 따라 Claude(`.claude/skills`) 또는 Antigravity(`.agents/skills`, `.gemini/skills`) 폴더를 읽는다.
 enum SkillCatalog {
-    static func load(projectRoot: String?) -> [ClaudeSkill] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+    static func load(
+        projectRoot: String?,
+        engine: AssistantEngine = .current,
+        home: String = FileManager.default.homeDirectoryForCurrentUser.path
+    ) -> [ClaudeSkill] {
         var roots: [(path: String, source: String)] = []
-        if let projectRoot { roots.append((projectRoot + "/.claude/skills", "프로젝트")) }
-        roots.append((home + "/.claude/skills", "내 스킬"))
-        roots += pluginSkillRoots(home: home)
+        switch engine {
+        case .claude:
+            if let projectRoot { roots.append((projectRoot + "/.claude/skills", "프로젝트")) }
+            roots.append((home + "/.claude/skills", "내 스킬"))
+            roots += pluginSkillRoots(home: home)
+        case .antigravity:
+            if let projectRoot {
+                roots.append((projectRoot + "/.agents/skills", "프로젝트"))
+                roots.append((projectRoot + "/.gemini/skills", "프로젝트"))
+            }
+            roots.append((home + "/.gemini/config/skills", "내 스킬"))
+            roots.append((home + "/.gemini/skills", "내 스킬"))
+            roots.append((home + "/.gemini/antigravity/skills", "내 스킬"))
+            roots.append((home + "/.gemini/antigravity/builtin/skills", "기본 내장"))
+        }
 
         var seen: Set<String> = []
         var skills: [ClaudeSkill] = []
@@ -34,8 +49,9 @@ enum SkillCatalog {
             guard let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { continue }
             for name in names.sorted() {
                 let file = root.path + "/" + name + "/SKILL.md"
-                guard !seen.contains(name), let skill = parse(file: file, fallbackName: name, source: root.source) else { continue }
-                seen.insert(name)
+                guard let skill = parse(file: file, fallbackName: name, source: root.source),
+                      !seen.contains(skill.name) else { continue }
+                seen.insert(skill.name)
                 skills.append(skill)
             }
         }

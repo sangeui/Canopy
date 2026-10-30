@@ -79,10 +79,10 @@ struct StatusBand: View {
             // claude CLI가 없으면 숨긴다. 설치 안내는 설정의 Claude 페이지에 있다.
             if store.assistantAvailable {
                 Button { store.toggleAssistant() } label: {
-                    ClaudeMark(size: 14, color: store.showsAssistant ? ClaudeMark.orange : Theme.secondary)
+                    AssistantMark(size: 14, color: store.showsAssistant ? AssistantMark.accent : Theme.secondary)
                 }
                 .buttonStyle(IconButtonStyle())
-                .help(store.showsAssistant ? "Claude 닫기 (⌘I)" : "Claude (⌘I)")
+                .help(store.showsAssistant ? "\(store.assistantTitle) 닫기 (⌘I)" : "\(store.assistantTitle) (⌘I)")
             }
             // 미니 모드와 오른쪽 패널은 창 배치를 바꾸는 버튼이라 맨 오른쪽에 같이 둔다.
             // 미니 창의 돌아가기 버튼(pip.exit)과 짝을 맞춘다.

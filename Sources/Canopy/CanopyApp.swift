@@ -364,7 +364,7 @@ struct CanopyApp: App {
                     .keyboardShortcut("r")
                     .disabled(!store.isOpen)
                 Divider()
-                Button(store.showsAssistant ? "Claude 닫기" : "Claude") { store.toggleAssistant() }
+                Button(store.showsAssistant ? "\(store.assistantTitle) 닫기" : store.assistantTitle) { store.toggleAssistant() }
                     .keyboardShortcut("i")
                     .disabled(!store.isOpen || !store.assistantAvailable)
                 Button("미니 모드 전환") { MiniMode.enter() }

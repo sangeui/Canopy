@@ -36,17 +36,96 @@ struct ClaudeMark: View {
     }
 }
 
-/// 메인 창 오른쪽 아래에 떠 있는 Claude 카드. 오른쪽 패널과 따로라서 커밋이나 파일을 바꿔 봐도 닫히지 않는다.
+/// Antigravity 표시. 외부 이미지 에셋 없이 4각 성운 형태로 그린다.
+struct AntigravityMark: View {
+    var size: CGFloat = 14
+    var color = AntigravityMark.blue
+
+    static let blue = Color(nsColor: NSColor(hex: 0x4E82EE))
+
+    var body: some View {
+        Canvas { context, canvas in
+            let w = canvas.width
+            let h = canvas.height
+            let cx = w / 2
+            let cy = h / 2
+            let r = min(w, h) * 0.48
+            let k = r * 0.22
+            var path = Path()
+            path.move(to: CGPoint(x: cx, y: cy - r))
+            path.addQuadCurve(to: CGPoint(x: cx + r, y: cy), control: CGPoint(x: cx + k, y: cy - k))
+            path.addQuadCurve(to: CGPoint(x: cx, y: cy + r), control: CGPoint(x: cx + k, y: cy + k))
+            path.addQuadCurve(to: CGPoint(x: cx - r, y: cy), control: CGPoint(x: cx - k, y: cy + k))
+            path.addQuadCurve(to: CGPoint(x: cx, y: cy - r), control: CGPoint(x: cx - k, y: cy - k))
+            path.closeSubpath()
+            context.fill(path, with: .color(color))
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel("Antigravity")
+    }
+}
+
+/// 현재 선택된 어시스턴트 엔진(Claude / Antigravity)에 맞는 아이콘 표시
+struct AssistantMark: View {
+    var size: CGFloat = 14
+    var color: Color? = nil
+    var engine: AssistantEngine = ClaudeAccount.shared.engine
+
+    static var accent: Color {
+        accent(for: ClaudeAccount.shared.engine)
+    }
+
+    static func accent(for engine: AssistantEngine) -> Color {
+        switch engine {
+        case .claude: ClaudeMark.orange
+        case .antigravity: AntigravityMark.blue
+        }
+    }
+
+    var body: some View {
+        switch engine {
+        case .claude:
+            ClaudeMark(size: size, color: color ?? ClaudeMark.orange)
+        case .antigravity:
+            AntigravityMark(size: size, color: color ?? AntigravityMark.blue)
+        }
+    }
+}
+
+/// 메인 창 오른쪽 아래에 떠 있는 어시스턴트 카드. 오른쪽 패널과 따로라서 커밋이나 파일을 바꿔 봐도 닫히지 않는다.
 struct AssistantCard: View {
     @Environment(RepositoryStore.self) private var store
 
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                // 머리줄은 띠 없이 아이콘만. 왼쪽 표시는 이 카드가 Claude라는 것만 알린다.
                 HStack(spacing: 4) {
-                    ClaudeMark(size: 13)
-                        .help("Claude")
+                    Menu {
+                        ForEach(AssistantEngine.allCases) { engine in
+                            Button {
+                                ClaudeAccount.shared.engine = engine
+                                store.loadSkills()
+                            } label: {
+                                if store.assistantEngine == engine {
+                                    Label(engine.title, systemImage: "checkmark")
+                                } else {
+                                    Text(engine.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            AssistantMark(size: 13)
+                            Text(store.assistantTitle)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Theme.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(store.isAssistantRunning)
+                    .help("어시스턴트 엔진 선택 (\(store.assistantTitle))")
                     Spacer()
                     if !store.assistantMessages.isEmpty {
                         Button { store.clearAssistant() } label: {
@@ -78,7 +157,7 @@ struct AssistantCard: View {
     }
 }
 
-/// Claude 카드 본문. 맨 위 칩이 질문에 같이 가는 것이고, 메인 창에서 보고 있는 것이 바뀌면 칩도 바뀐다.
+/// 어시스턴트 카드 본문. 맨 위 칩이 질문에 같이 가는 것이고, 메인 창에서 보고 있는 것이 바뀌면 칩도 바뀐다.
 struct AssistantView: View {
     @Environment(RepositoryStore.self) private var store
     @State private var draft = ""
@@ -88,8 +167,8 @@ struct AssistantView: View {
         VStack(spacing: 0) {
             if !store.assistantAvailable {
                 EmptyState(
-                    title: "claude CLI가 없습니다",
-                    message: "Claude Code를 설치하면 여기서 바로 쓸 수 있습니다.",
+                    title: "\(store.assistantEngine.cliDisplayName) CLI가 없습니다",
+                    message: "\(store.assistantEngine.productName)를 설치하면 여기서 바로 쓸 수 있습니다.",
                     systemImage: "terminal"
                 )
                 .safeAreaInset(edge: .bottom, spacing: 0) { floatingComposer }
@@ -285,7 +364,7 @@ struct AssistantView: View {
                 if let skill {
                     SkillChip(skill: skill) { self.skill = nil }
                 }
-                TextField(skill?.argumentHint ?? "Claude에게 물어보기", text: $draft, axis: .vertical)
+                TextField(skill?.argumentHint ?? "\(store.assistantTitle)에게 물어보기", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .lineLimit(1...6)
@@ -634,7 +713,7 @@ private struct SkillSuggestions: View {
                     HStack(spacing: 8) {
                         Text("/" + skill.name)
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(ClaudeMark.orange)
+                            .foregroundStyle(AssistantMark.accent)
                             .lineLimit(1)
                         Text(skill.summary)
                             .font(.system(size: 11))
@@ -675,10 +754,10 @@ private struct SkillChip: View {
             }
             .buttonStyle(.plain)
         }
-        .foregroundStyle(ClaudeMark.orange)
+        .foregroundStyle(AssistantMark.accent)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(ClaudeMark.orange.opacity(0.12), in: Capsule())
+        .background(AssistantMark.accent.opacity(0.12), in: Capsule())
         .help(skill.summary)
     }
 }

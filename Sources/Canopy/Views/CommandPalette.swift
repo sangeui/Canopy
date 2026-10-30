@@ -144,7 +144,7 @@ struct CommandPalette: View {
             action("changes", "pencil.and.list.clipboard", "변경 사항 보기", "⌘1") { store.sidebarSelection = nil; store.pane = .changes }
             action("history", "point.3.connected.trianglepath.dotted", "히스토리 보기", "⌘2") { store.sidebarSelection = nil; store.pane = .history }
             action("activity", "clock.arrow.circlepath", "활동 보기", "⌘3") { store.sidebarSelection = nil; store.pane = .activity }
-            action("claude", "asterisk", store.showsAssistant ? "Claude 닫기" : "Claude", "⌘I") { store.toggleAssistant() }
+            action("claude", "asterisk", store.showsAssistant ? "\(store.assistantTitle) 닫기" : store.assistantTitle, "⌘I") { store.toggleAssistant() }
             action("mini", "pip.enter", "미니 모드", "⌥⌘M") { MiniMode.enter() }
             for kind in GitFlowKind.allCases {
                 action("flow-" + kind.rawValue, "arrow.triangle.branch", "Git Flow \(kind.title) 시작", "") { store.sheet = .gitFlowStart(kind) }
